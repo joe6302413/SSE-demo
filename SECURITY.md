@@ -20,7 +20,7 @@ Please **do not** open a public GitHub issue for security vulnerabilities, as th
 Instead, use one of the following:
 
 - **GitHub private vulnerability reporting** — go to the [Security tab](https://github.com/joe6302413/SSE-demo/security/advisories/new) of this repository and submit a private advisory.
-- **Email** — contact the maintainer directly at the email address listed on the GitHub profile.
+- **Email** — **Contact:** Dr. Yi-Chun **Email:** ycchin@ntu.edu.tw
 
 Please include in your report:
 - A description of the vulnerability and its potential impact
