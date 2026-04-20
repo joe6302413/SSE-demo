@@ -96,11 +96,33 @@ def dos_valence(E, Ev, mh_r):
     g[m] = mh_r ** 1.5 * np.sqrt(Ev - E[m])
     return g
 
-def solve_doping(Nd, Na, ni_val):
-    D = Nd - Na
-    n = D / 2.0 + np.sqrt((D / 2.0) ** 2 + ni_val ** 2)
-    p = ni_val ** 2 / n if n > 0 else 0.0
-    return n, p
+def solve_EF_selfconsistent(Nd, Na, Ed, Ea, Nc, Nv, Ec, Ev, T):
+    """Solve n0 + Na⁻ - p0 - Nd⁺ = 0 for EF via bisection (100 iterations).
+    Ed/Ea are the dopant levels in eV; pass None if not applicable.
+    Returns (EF, n0, p0) — n0/p0 via Boltzmann, so mass action holds exactly."""
+    kT = kb * T
+
+    def balance(EF):
+        n0  = Nc * np.exp(np.clip((EF - Ec) / kT, -500, 500))
+        p0  = Nv * np.exp(np.clip((Ev - EF) / kT, -500, 500))
+        Ndp = (Nd / (1.0 + 2.0  * np.exp(np.clip((EF - Ed) / kT, -500, 500)))
+               if (Nd > 0 and Ed is not None) else 0.0)
+        Nam = (Na / (1.0 + 0.25 * np.exp(np.clip((Ea - EF) / kT, -500, 500)))
+               if (Na > 0 and Ea is not None) else 0.0)
+        return n0 + Nam - p0 - Ndp
+
+    lo, hi = Ev - 0.5, Ec + 0.5
+    for _ in range(100):
+        mid = (lo + hi) / 2.0
+        if balance(mid) < 0:
+            lo = mid
+        else:
+            hi = mid
+    EF = (lo + hi) / 2.0
+    kT = kb * T
+    n0 = Nc * np.exp(np.clip((EF - Ec) / kT, -500, 500))
+    p0 = Nv * np.exp(np.clip((Ev - EF) / kT, -500, 500))
+    return EF, n0, p0
 
 def EF_from_log_n(log_n, Nc, Ec, T):
     return Ec + kb * T * (log_n - np.log(Nc))
@@ -133,7 +155,7 @@ with st.sidebar:
     st.header("Global Settings")
     material_name = st.selectbox("Material", list(MATERIALS.keys()))
     mat  = MATERIALS[material_name]
-    T    = st.slider("Temperature  T (K)", 100, 700, 300, step=10)
+    T    = st.slider("Temperature  T (K)", 10, 700, 300, step=10)
 
     Eg   = mat["Eg"];  me_r = mat["me_r"];  mh_r = mat["mh_r"]
     Ev   = 0.0;        Ec   = Eg
@@ -214,10 +236,10 @@ with tab1:
 
         fig1.add_hrect(y0=Ec,      y1=Ec+0.55, fillcolor="rgba(220,50,50,0.12)",   line_width=0)
         fig1.add_hrect(y0=Ev-0.55, y1=Ev,      fillcolor="rgba(50,130,200,0.12)",  line_width=0)
-        fig1.add_hline(y=Ec, line_color="red",   line_dash="dash", line_width=1.5,
+        fig1.add_hline(y=Ec, line_color="red",   line_width=1.5,
                        annotation_text=f"E<sub>c</sub> = {Ec:.2f} eV",
                        annotation_position="top right", annotation_font_color="red")
-        fig1.add_hline(y=Ev, line_color="blue",  line_dash="dash", line_width=1.5,
+        fig1.add_hline(y=Ev, line_color="blue",  line_width=1.5,
                        annotation_text=f"E<sub>v</sub> = {Ev:.2f} eV",
                        annotation_position="bottom right", annotation_font_color="blue")
         fig1.add_hline(y=EF_t1, line_color="green", line_dash="dashdot", line_width=2,
@@ -227,10 +249,10 @@ with tab1:
         # Dummy traces so Ec / Ev / EF appear in the legend
         fig1.add_trace(go.Scatter(x=[None], y=[None], mode="lines",
             name=f"E<sub>c</sub> = {Ec:.2f} eV",
-            line=dict(color="red", dash="dash", width=1.5)))
+            line=dict(color="red", width=1.5)))
         fig1.add_trace(go.Scatter(x=[None], y=[None], mode="lines",
             name=f"E<sub>v</sub> = {Ev:.2f} eV",
-            line=dict(color="blue", dash="dash", width=1.5)))
+            line=dict(color="blue", width=1.5)))
         fig1.add_trace(go.Scatter(x=[None], y=[None], mode="lines",
             name=f"E<sub>F</sub> = {EF_t1:.3f} eV",
             line=dict(color="green", dash="dashdot", width=2)))
@@ -289,18 +311,19 @@ with tab2:
 
         fig2.add_vline(x=0, line_color="black", line_width=0.8)
         fig2.add_hrect(y0=Ev, y1=Ec, fillcolor="rgba(255,255,0,0.07)", line_width=0)
-        fig2.add_hline(y=Ec, line_color="red",  line_dash="dash", line_width=1.2,
+        fig2.add_hline(y=Ec, line_color="red",  line_width=1.2,
                        annotation_text="E<sub>c</sub>", annotation_position="top right",
                        annotation_font_color="red")
-        fig2.add_hline(y=Ev, line_color="blue", line_dash="dash", line_width=1.2,
+        fig2.add_hline(y=Ev, line_color="blue", line_width=1.2,
                        annotation_text="E<sub>v</sub>", annotation_position="bottom right",
                        annotation_font_color="blue")
 
         fig2.update_layout(
             xaxis=dict(title="g(E)  (arb. units)"),
             yaxis=dict(title="Energy (eV)", range=[Ev - 0.5, Ec + 0.5]),
-            height=520, margin=dict(r=80),
+            height=520, margin=dict(r=80, b=80),
             title=f"Density of States \u2014 {material_name}  (E\u1d67 = {Eg} eV)",
+            legend=dict(orientation="h", yanchor="top", y=-0.14, xanchor="center", x=0.5),
         )
         st.plotly_chart(fig2, use_container_width=False)
 
@@ -370,8 +393,8 @@ with tab3:
 
     # Shared horizontal lines for all three panels
     for col_i in [1, 2, 3]:
-        fig3.add_hline(y=Ec,    line_color="red",   line_dash="dash",    line_width=1.2, row=1, col=col_i)
-        fig3.add_hline(y=Ev,    line_color="blue",  line_dash="dash",    line_width=1.2, row=1, col=col_i)
+        fig3.add_hline(y=Ec,    line_color="red",   line_width=1.2, row=1, col=col_i)
+        fig3.add_hline(y=Ev,    line_color="blue",  line_width=1.2, row=1, col=col_i)
         fig3.add_hline(y=EF_t3, line_color="green", line_dash="dashdot", line_width=1.5, row=1, col=col_i)
         fig3.add_hrect(y0=Ev, y1=Ec, fillcolor="rgba(255,255,0,0.07)", line_width=0, row=1, col=col_i)
 
@@ -449,17 +472,17 @@ with tab4:
             dopant_label = f"E<sub>a</sub> ({sym}):  E<sub>v</sub> + {dE_dopant*1e3:.1f} meV"
             st.caption(f"N\u1d2c = {Na:.2e} cm\u207b\u00b3  |  n\u1d62 = {ni_val:.2e} cm\u207b\u00b3")
 
-        # Solve for EF (log-space, no clamping)
+        # Solve for EF self-consistently (accounts for partial ionisation / freeze-out)
         if Nd == 0 and Na == 0:
-            log_n0_d = log_ni_v;  log_p0_d = log_ni_v
+            EF_d = Ei
+            log_n0_d = log_p0_d = log_ni_v
         else:
-            n0_d, p0_d = solve_doping(Nd, Na, ni_val)
-            log_n0_d = np.log(n0_d) if n0_d > 0 else log_ni_v
-            log_p0_d = np.log(p0_d) if p0_d > 0 else log_ni_v
-
-        EF_d = (EF_from_log_n(log_n0_d, Nc, Ec, T) if log_n0_d >= log_p0_d
-                else EF_from_log_p(log_p0_d, Nv, Ev, T))
-        EF_d = np.clip(EF_d, Ev - 0.3, Ec + 0.3)
+            Ed_sc = E_dopant if "n-type" in doping_type else None
+            Ea_sc = E_dopant if "p-type" in doping_type else None
+            EF_d, _, _ = solve_EF_selfconsistent(Nd, Na, Ed_sc, Ea_sc, Nc, Nv, Ec, Ev, T)
+            EF_d = np.clip(EF_d, Ev - 0.3, Ec + 0.3)
+            log_n0_d = np.log(Nc) + (EF_d - Ec) / (kb * T)
+            log_p0_d = np.log(Nv) + (Ev - EF_d) / (kb * T)
 
         n0_d_val  = float(np.exp(log_n0_d)) if log_n0_d > -700 else 0.0
         p0_d_val  = float(np.exp(log_p0_d)) if log_p0_d > -700 else 0.0
@@ -542,29 +565,28 @@ with tab4:
         )
         st.plotly_chart(fig_bd, use_container_width=True)
 
-        # ── EF vs doping sweep ─────────────────────────────────────────────────
+        # ── Sweep: EF and carrier densities vs doping (self-consistent) ──────────
         N_sweep  = np.logspace(10, 20, 400)
-        EF_sweep = []
+        EF_sweep, n_sweep, p_sweep = [], [], []
         for Ndop in N_sweep:
             if "n-type" in doping_type:
-                ns, ps = solve_doping(Ndop, 0.0, ni_val)
+                ef_s, ns, ps = solve_EF_selfconsistent(Ndop, 0.0, E_dopant, None, Nc, Nv, Ec, Ev, T)
             elif "p-type" in doping_type:
-                ns, ps = solve_doping(0.0, Ndop, ni_val)
+                ef_s, ns, ps = solve_EF_selfconsistent(0.0, Ndop, None, E_dopant, Nc, Nv, Ec, Ev, T)
             else:
-                ns = ps = ni_val
-            ln = np.log(ns) if ns > 0 else log_ni_v
-            lp = np.log(ps) if ps > 0 else log_ni_v
-            ef = EF_from_log_n(ln, Nc, Ec, T) if ln >= lp else EF_from_log_p(lp, Nv, Ev, T)
-            EF_sweep.append(float(np.clip(ef, Ev - 0.35, Ec + 0.35)))
+                ef_s = Ei; ns = ps = ni_val
+            EF_sweep.append(float(np.clip(ef_s, Ev - 0.35, Ec + 0.35)))
+            n_sweep.append(max(ns, 1e-40))
+            p_sweep.append(max(ps, 1e-40))
 
         fig_sw = go.Figure()
         fig_sw.add_hrect(y0=Ev, y1=Ec, fillcolor="rgba(255,255,0,0.06)", line_width=0)
         fig_sw.add_trace(go.Scatter(x=N_sweep, y=EF_sweep, mode="lines",
                                     name="E<sub>F</sub>", line=dict(color="green", width=2)))
-        fig_sw.add_hline(y=Ec, line_color="red",  line_dash="dash", line_width=1.2,
+        fig_sw.add_hline(y=Ec, line_color="red",  line_width=1.2,
                          annotation_text="E<sub>c</sub>", annotation_position="top right",
                          annotation_font_color="red")
-        fig_sw.add_hline(y=Ev, line_color="blue", line_dash="dash", line_width=1.2,
+        fig_sw.add_hline(y=Ev, line_color="blue", line_width=1.2,
                          annotation_text="E<sub>v</sub>", annotation_position="bottom right",
                          annotation_font_color="blue")
         fig_sw.add_hline(y=Ei, line_color="gray", line_dash="dot",  line_width=1.0,
@@ -590,23 +612,12 @@ with tab4:
         lbl = "N\u1d30" if "n-type" in doping_type else ("N\u1d2c" if "p-type" in doping_type else "N")
         fig_sw.update_xaxes(type="log", title="Doping concentration (cm\u207b\u00b3)", exponentformat="power")
         fig_sw.update_yaxes(title="E<sub>F</sub> (eV)", range=[Ev - 0.35, Ec + 0.35])
-        fig_sw.update_layout(height=340, margin=dict(r=210),
+        fig_sw.update_layout(height=340, margin=dict(r=210, b=70),
                              title=f"E<sub>F</sub> vs. {lbl}",
-                             legend=dict(x=0.02, y=0.02))
+                             legend=dict(orientation="h", yanchor="top", y=-0.28, xanchor="center", x=0.5))
         st.plotly_chart(fig_sw, use_container_width=True)
 
         # ── Carrier densities vs doping ────────────────────────────────────────
-        n_sweep, p_sweep = [], []
-        for Ndop in N_sweep:
-            if "n-type" in doping_type:
-                ns, ps = solve_doping(Ndop, 0.0, ni_val)
-            elif "p-type" in doping_type:
-                ns, ps = solve_doping(0.0, Ndop, ni_val)
-            else:
-                ns = ps = ni_val
-            n_sweep.append(ns if ns > 0 else ni_val)
-            p_sweep.append(ps if ps > 0 else ni_val)
-
         plot_floor = max(ni_val * 1e-3, 1e-40)
         n_arr = np.maximum(np.array(n_sweep), plot_floor)
         p_arr = np.maximum(np.array(p_sweep), plot_floor)
@@ -615,7 +626,7 @@ with tab4:
         fig_cd.add_trace(go.Scatter(x=N_sweep, y=n_arr, mode="lines",
                                     name="n\u2080 (electrons)", line=dict(color="red", width=2)))
         fig_cd.add_trace(go.Scatter(x=N_sweep, y=p_arr, mode="lines",
-                                    name="p\u2080 (holes)", line=dict(color="blue", dash="dash", width=2)))
+                                    name="p\u2080 (holes)", line=dict(color="blue", width=2)))
         if ni_val > 0:
             fig_cd.add_hline(y=ni_val, line_color="gray", line_dash="dot", line_width=1.2,
                              annotation_text=f"n\u1d62 = {ni_val:.1e}",
@@ -626,8 +637,8 @@ with tab4:
             fig_cd.add_vline(x=Na, line_color="orange", line_dash="dashdot", line_width=1.5)
 
         fig_cd.update_xaxes(type="log", title="Doping concentration (cm\u207b\u00b3)", exponentformat="power")
-        fig_cd.update_yaxes(type="log", title="Carrier density (cm\u207b\u00b3)")
-        fig_cd.update_layout(height=320, margin=dict(r=120),
+        fig_cd.update_yaxes(type="log", title="Carrier density (cm\u207b\u00b3)", exponentformat="power")
+        fig_cd.update_layout(height=320, margin=dict(r=120, b=70),
                              title="n\u2080 and p\u2080  (n\u2080\u00b7p\u2080 = n\u1d62\u00b2 always)",
-                             legend=dict(x=0.02, y=0.98))
+                             legend=dict(orientation="h", yanchor="top", y=-0.30, xanchor="center", x=0.5))
         st.plotly_chart(fig_cd, use_container_width=True)
