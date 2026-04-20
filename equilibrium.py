@@ -212,7 +212,6 @@ with tab1:
                            annotation_text="E<sub>F</sub> \u00b1 3k<sub>B</sub>T",
                            annotation_position="top right")
 
-        fig1.add_hrect(y0=Ev,      y1=Ec,      fillcolor="rgba(255,255,0,0.07)",   line_width=0)
         fig1.add_hrect(y0=Ec,      y1=Ec+0.55, fillcolor="rgba(220,50,50,0.12)",   line_width=0)
         fig1.add_hrect(y0=Ev-0.55, y1=Ev,      fillcolor="rgba(50,130,200,0.12)",  line_width=0)
         fig1.add_hline(y=Ec, line_color="red",   line_dash="dash", line_width=1.5,
@@ -225,12 +224,23 @@ with tab1:
                        annotation_text=f"E<sub>F</sub> = {EF_t1:.3f} eV",
                        annotation_position="right", annotation_font_color="green")
 
+        # Dummy traces so Ec / Ev / EF appear in the legend
+        fig1.add_trace(go.Scatter(x=[None], y=[None], mode="lines",
+            name=f"E<sub>c</sub> = {Ec:.2f} eV",
+            line=dict(color="red", dash="dash", width=1.5)))
+        fig1.add_trace(go.Scatter(x=[None], y=[None], mode="lines",
+            name=f"E<sub>v</sub> = {Ev:.2f} eV",
+            line=dict(color="blue", dash="dash", width=1.5)))
+        fig1.add_trace(go.Scatter(x=[None], y=[None], mode="lines",
+            name=f"E<sub>F</sub> = {EF_t1:.3f} eV",
+            line=dict(color="green", dash="dashdot", width=2)))
+
         fig1.update_layout(
             xaxis=dict(title="Occupation probability  f(E)", range=[-0.05, 1.25]),
             yaxis=dict(title="Energy (eV)", range=[Ev - 0.5, Ec + 0.5]),
-            height=520, margin=dict(r=170),
+            height=520, margin=dict(r=170, b=120),
             title=f"{material_name}  |  T = {T} K",
-            legend=dict(x=0.55, y=0.5),
+            legend=dict(orientation="h", y=-0.18, x=0),
         )
         st.plotly_chart(fig1, use_container_width=False)
 
@@ -390,11 +400,11 @@ with tab3:
     n0_t3     = float(np.exp(log_n0)) if log_n0 > -700 else 0.0
     p0_t3     = float(np.exp(log_p0)) if log_p0 > -700 else 0.0
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("n₀ (electrons)", fmt_density(n0_t3))
-    c2.metric("p₀ (holes)",     fmt_density(p0_t3))
-    c3.metric("n₀ \u00b7 p₀",  f"{n0_t3*p0_t3:.2e} cm\u207b\u2076" if n0_t3 > 0 and p0_t3 > 0 else "~0")
-    c4.metric("n₀p₀ / n\u1d62\u00b2", f"{ratio:.5f}")
+    st.markdown(f"""
+| n<sub>0</sub> | p<sub>0</sub> | n<sub>0</sub>·p<sub>0</sub> | n<sub>0</sub>p<sub>0</sub> / n<sub>i</sub>² |
+|:--|:--|:--|:--|
+| {fmt_density(n0_t3)} | {fmt_density(p0_t3)} | {"~0" if n0_t3 <= 0 or p0_t3 <= 0 else f"{n0_t3*p0_t3:.2e} cm⁻⁶"} | {ratio:.5f} |
+""", unsafe_allow_html=True)
     if abs(ratio - 1) < 0.02:
         st.success("n\u2080p\u2080 = n\u1d62\u00b2  \u2713  (mass action law verified)")
     else:
@@ -420,25 +430,23 @@ with tab4:
         if "n-type" in doping_type:
             Nd_exp = st.slider("log\u2081\u2080(N\u1d30 / cm\u207b\u00b3)", 10.0, 20.0, 15.0, step=0.05)
             Nd = 10 ** Nd_exp
-            donor_opts = ["\u2014 none \u2014"] + list(DOPANTS[material_name]["donors"].keys())
+            donor_opts = list(DOPANTS[material_name]["donors"].keys())
             sel_donor  = st.selectbox("Dopant species", donor_opts, key="t4_donor")
-            if sel_donor != "\u2014 none \u2014":
-                dE_dopant    = DOPANTS[material_name]["donors"][sel_donor]
-                E_dopant     = Ec - dE_dopant
-                sym          = sel_donor.split()[0]
-                dopant_label = f"E<sub>d</sub> ({sym}):  E<sub>c</sub> \u2212 {dE_dopant*1e3:.1f} meV"
+            dE_dopant    = DOPANTS[material_name]["donors"][sel_donor]
+            E_dopant     = Ec - dE_dopant
+            sym          = sel_donor.split()[0]
+            dopant_label = f"E<sub>d</sub> ({sym}):  E<sub>c</sub> \u2212 {dE_dopant*1e3:.1f} meV"
             st.caption(f"N\u1d30 = {Nd:.2e} cm\u207b\u00b3  |  n\u1d62 = {ni_val:.2e} cm\u207b\u00b3")
 
         elif "p-type" in doping_type:
             Na_exp = st.slider("log\u2081\u2080(N\u1d2c / cm\u207b\u00b3)", 10.0, 20.0, 15.0, step=0.05)
             Na = 10 ** Na_exp
-            acc_opts  = ["\u2014 none \u2014"] + list(DOPANTS[material_name]["acceptors"].keys())
+            acc_opts  = list(DOPANTS[material_name]["acceptors"].keys())
             sel_acc   = st.selectbox("Dopant species", acc_opts, key="t4_acc")
-            if sel_acc != "\u2014 none \u2014":
-                dE_dopant    = DOPANTS[material_name]["acceptors"][sel_acc]
-                E_dopant     = Ev + dE_dopant
-                sym          = sel_acc.split()[0]
-                dopant_label = f"E<sub>a</sub> ({sym}):  E<sub>v</sub> + {dE_dopant*1e3:.1f} meV"
+            dE_dopant    = DOPANTS[material_name]["acceptors"][sel_acc]
+            E_dopant     = Ev + dE_dopant
+            sym          = sel_acc.split()[0]
+            dopant_label = f"E<sub>a</sub> ({sym}):  E<sub>v</sub> + {dE_dopant*1e3:.1f} meV"
             st.caption(f"N\u1d2c = {Na:.2e} cm\u207b\u00b3  |  n\u1d62 = {ni_val:.2e} cm\u207b\u00b3")
 
         # Solve for EF (log-space, no clamping)
@@ -491,9 +499,8 @@ with tab4:
 
         # ── Band diagram ───────────────────────────────────────────────────────
         fig_bd = go.Figure()
-        fig_bd.add_hrect(y0=Ec,       y1=Ec + 0.4, fillcolor="rgba(220,50,50,0.20)",  line_width=0, name="Conduction band")
-        fig_bd.add_hrect(y0=Ev - 0.4, y1=Ev,        fillcolor="rgba(50,130,200,0.20)", line_width=0, name="Valence band")
-        fig_bd.add_hrect(y0=Ev,       y1=Ec,         fillcolor="rgba(255,255,200,0.50)", line_width=0, name=f"Gap ({Eg:.2f} eV)")
+        fig_bd.add_hrect(y0=Ec,       y1=Ec + 0.4, fillcolor="rgba(220,50,50,0.20)",  line_width=0)
+        fig_bd.add_hrect(y0=Ev - 0.4, y1=Ev,        fillcolor="rgba(50,130,200,0.20)", line_width=0)
 
         fig_bd.add_hline(y=Ec, line_color="red",   line_width=2,
                          annotation_text="E<sub>c</sub>",
@@ -531,7 +538,7 @@ with tab4:
             yaxis=dict(title="Energy (eV)", range=[Ev - 0.45, Ec + 0.45]),
             height=440, margin=dict(r=220, l=60),
             title=f"{material_name}  |  T = {T} K",
-            showlegend=True, legend=dict(x=0, y=1.0, bgcolor="rgba(255,255,255,0.7)"),
+            showlegend=False,
         )
         st.plotly_chart(fig_bd, use_container_width=True)
 
@@ -581,7 +588,7 @@ with tab4:
                                         name=f"current N\u1d2c = {Na:.1e}"))
 
         lbl = "N\u1d30" if "n-type" in doping_type else ("N\u1d2c" if "p-type" in doping_type else "N")
-        fig_sw.update_xaxes(type="log", title="Doping concentration (cm\u207b\u00b3)")
+        fig_sw.update_xaxes(type="log", title="Doping concentration (cm\u207b\u00b3)", exponentformat="power")
         fig_sw.update_yaxes(title="E<sub>F</sub> (eV)", range=[Ev - 0.35, Ec + 0.35])
         fig_sw.update_layout(height=340, margin=dict(r=210),
                              title=f"E<sub>F</sub> vs. {lbl}",
@@ -618,7 +625,7 @@ with tab4:
         elif "p-type" in doping_type and Na > 0:
             fig_cd.add_vline(x=Na, line_color="orange", line_dash="dashdot", line_width=1.5)
 
-        fig_cd.update_xaxes(type="log", title="Doping concentration (cm\u207b\u00b3)")
+        fig_cd.update_xaxes(type="log", title="Doping concentration (cm\u207b\u00b3)", exponentformat="power")
         fig_cd.update_yaxes(type="log", title="Carrier density (cm\u207b\u00b3)")
         fig_cd.update_layout(height=320, margin=dict(r=120),
                              title="n\u2080 and p\u2080  (n\u2080\u00b7p\u2080 = n\u1d62\u00b2 always)",
