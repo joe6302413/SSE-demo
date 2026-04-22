@@ -201,7 +201,7 @@ with tab1:
                                float(Ev - 0.3), float(Ec + 0.3), float(Ei),
                                step=0.005, key="t1_EF")
         show_boltz = st.checkbox("Boltzmann approximation", value=True)
-        show_3kT   = st.checkbox("Show \u00b13k\u2082T window", value=True)
+        show_3kT   = st.checkbox("Show $\pm 3k_BT$ window", value=True)
 
         kT = kb * T
         f_Ec   = fermi_dirac(np.array([Ec]), EF_t1, T)[0]
